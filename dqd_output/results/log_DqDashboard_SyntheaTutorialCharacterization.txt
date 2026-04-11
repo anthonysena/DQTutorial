@@ -1,0 +1,15 @@
+2026-04-10 17:57:45	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
+2026-04-10 17:57:45	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureValueCompleteness
+2026-04-10 17:57:50	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleValueLow
+2026-04-10 17:57:51	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleValueHigh
+2026-04-10 17:57:52	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleTemporalAfter
+2026-04-10 17:57:53	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleDuringLife
+2026-04-10 17:57:54	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: withinVisitDates
+2026-04-10 17:57:54	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleAfterBirth
+2026-04-10 17:57:54	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleBeforeDeath
+2026-04-10 17:57:55	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleStartBeforeEnd
+2026-04-10 17:57:55	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleGender
+2026-04-10 17:57:59	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleGenderUseDescendants
+2026-04-10 17:57:59	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleUnitConceptIds
+2026-04-10 17:58:04	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: C:/git/anthonysena/DQTutorial/dqd_output/results/quarto-characterization-before.json
+2026-04-10 17:58:04	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete

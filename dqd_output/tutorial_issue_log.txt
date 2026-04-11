@@ -1,0 +1,39 @@
+Broken tutorial snapshot
+Database: C:/git/anthonysena/DQTutorial/data/syntheaCDM_tutorial_broken.duckdb
+Generated: 2026-04-10 17:53:58 EDT
+
+[Issues]
+characterization characterization_drug_start_before_end drug_exposure_id=1 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=10 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=2 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=3 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=4 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=5 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=6 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=7 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=8 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_drug_start_before_end drug_exposure_id=9 - Set drug_exposure_end_date to occur before drug_exposure_start_date.
+characterization characterization_observation_within_visit_dates observation_id=1 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=10 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=2 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=3 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=4 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=5 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=6 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=7 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=8 - Shifted observation_date outside the associated visit window.
+characterization characterization_observation_within_visit_dates observation_id=9 - Shifted observation_date outside the associated visit window.
+convention convention_condition_era_completeness person_id=1 - Deleted all condition_era rows for one person with condition_occurrence history.
+convention convention_procedure_person_completeness person_id=1 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=2 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=3 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=4 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=5 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=6 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=7 - Deleted all procedure_occurrence rows for selected persons.
+convention convention_procedure_person_completeness person_id=8 - Deleted all procedure_occurrence rows for selected persons.
+fatal fatal_duplicate_measurement_pk measurement_id=2 - Updated measurement_id 2 to duplicate existing measurement_id 1.
+fatal fatal_observation_period_overlap person_id=1 - Inserted overlapping observation_period_id 110 for person_id 1.
+
+[Fixes]
+None

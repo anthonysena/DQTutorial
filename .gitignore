@@ -1,1 +1,6 @@
 .Rproj.user
+
+/.quarto/
+**/*.quarto_ipynb
+/_freeze/
+/dqd_output/quarto-work/
