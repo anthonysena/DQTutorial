@@ -1,72 +1,36 @@
-library(DataQualityDashboard)
+source("R/dqd_helpers.R")
 
-# Inspect the checks - returns a list of 
-# items for the checkDescriptions, etc
-# dqChecks <- DataQualityDashboard::listDqChecks(
-#   cdmVersion = "5.4"
-# )
-
-# Connect to the Synthea CDM
-connectionDetails <- DatabaseConnector::createConnectionDetails(
-  dbms = "duckdb",
-  server = "data/syntheaCDM.duckdb"
-)
-
-# Some code to test the connection 
-# connection <- DatabaseConnector::connect(
-#   connectionDetails = connectionDetails
-# )
-
-# DatabaseConnector::querySql(
-#   connection = connection,
-#   sql = "SELECT * FROM main.cdm_source;"
-# )
-
-# DatabaseConnector::disconnect(connection = connection)
-DataQualityDashboard::executeDqChecks(
-  connectionDetails = connectionDetails,
-  cdmDatabaseSchema = "main",
-  resultsDatabaseSchema = "main",
+defaults <- list(
+  dbPath = "data/syntheaCDM.duckdb",
   cdmSourceName = "Synthea",
-  numThreads = 1,
-  sqlOnly = FALSE,
-  outputFolder = "dqd_output",
-  verboseMode = TRUE,
-  writeToTable = TRUE,
-  writeTableName = "dqddashboard_results",
-  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
-  checkSeverity = c("fatal", "convention", "characterization"),
-  cdmVersion = "5.4"
+  checkSeverity = "fatal,convention,characterization",
+  outputJsonPath = "dqd_output/results/synthea-clean-dqd.json",
+  outputFolder = "",
+  verboseMode = "true"
 )
 
-writeDqdResultsToFileSystem <- function(connectionDetails, outputFolder, outputFile) {
-  connection = DatabaseConnector::connect(
-    connectionDetails = connectionDetails
-  )
-  on.exit(DatabaseConnector::disconnect(connection))
-
-  outputFolder <- normalizePath(
-    path = outputFolder
-  )
-  if (!dir.exists(outputFolder)) {
-    dir.create(outputFolder)
-  }
-  DataQualityDashboard::writeDBResultsToJson(
-    connection = connection,
-    resultsDatabaseSchema = "main",
-    cdmDatabaseSchema = "main",
-    writeTableName = "dqddashboard_results",
-    outputFolder = outputFolder,
-    outputFile = outputFile
-  )
+args <- parse_named_args(defaults)
+check_severity <- split_csv_arg(args$checkSeverity)
+if (length(check_severity) == 0) {
+  stop("checkSeverity must contain at least one DQD severity.")
 }
 
-writeDqdResultsToFileSystem(
-  connectionDetails = connectionDetails,
-  outputFolder = "./dqd_output/results",
-  outputFile = "synthea-full-dqd.json"
+verbose_mode <- as_flag(args$verboseMode, default = TRUE)
+output_folder <- args$outputFolder
+if (!nzchar(output_folder)) {
+  output_folder <- dirname(args$outputJsonPath)
+}
+
+results <- run_dqd(
+  db_path = args$dbPath,
+  cdm_source_name = args$cdmSourceName,
+  check_severity = check_severity,
+  output_json_path = args$outputJsonPath,
+  output_folder = output_folder,
+  verbose_mode = verbose_mode,
+  write_to_table = FALSE
 )
 
-DataQualityDashboard::viewDqDashboard(
-  jsonPath = normalizePath("./dqd_output/results/synthea-full-dqd.json"),
-)
+cat("DQD JSON written to:", args$outputJsonPath, "\n")
+cat("Checks executed:", nrow(results$CheckResults), "\n")
+cat("Overall failed checks:", results$Overview$countOverallFailed[[1]], "\n")

@@ -1,0 +1,413 @@
+---
+title: "DataQualityDashboard Tutorial on a Staged OMOP CDM"
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  freeze: auto
+---
+
+## Introduction
+
+This tutorial walks through a staged DQD workflow on a synthetic OMOP CDM built from Synthea. The tutorial data has six curated issues distributed across `fatal`, `convention`, and `characterization` severities.
+
+Each stage follows the same pattern:
+
+1. run DQD for the current severity
+2. inspect the failures
+3. query the CDM to find the bad rows
+4. apply the fix
+5. rerun DQD to verify the fix
+
+The prepared snapshots keep each stage deterministic without mutating the clean baseline.
+
+## Environment and Package Setup
+
+```{r setup}
+library(DBI)
+library(duckdb)
+library(DataQualityDashboard)
+library(jsonlite)
+
+repo_root_candidates <- c(getwd(), normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE))
+repo_root <- repo_root_candidates[
+  file.exists(file.path(repo_root_candidates, "R", "dqd_helpers.R"))
+][1]
+
+if (is.na(repo_root) || !nzchar(repo_root)) {
+  stop("Could not locate the repository root from the Quarto working directory.")
+}
+
+source(file.path(repo_root, "R", "dqd_helpers.R"))
+source(file.path(repo_root, "R", "tutorial_sql_helpers.R"))
+
+snapshot_paths <- list(
+  broken = file.path(repo_root, "data", "syntheaCDM_tutorial_broken.duckdb"),
+  after_fatal = file.path(repo_root, "data", "syntheaCDM_tutorial_after_fatal.duckdb"),
+  after_convention = file.path(repo_root, "data", "syntheaCDM_tutorial_after_convention.duckdb")
+)
+
+missing_snapshots <- snapshot_paths[!file.exists(unlist(snapshot_paths))]
+if (length(missing_snapshots) > 0) {
+  stop(
+    "Missing tutorial snapshot(s): ",
+    paste(unlist(missing_snapshots), collapse = ", "),
+    ". Run `Rscript PrepareTutorialSnapshots.R` first."
+  )
+}
+
+quarto_work_dir <- file.path("dqd_output", "quarto-work")
+quarto_work_dir <- file.path(repo_root, "dqd_output", "quarto-work")
+ensure_dir(quarto_work_dir)
+ensure_dir(file.path(repo_root, "dqd_output", "results"))
+```
+
+## Tutorial Assets and Snapshot Overview
+
+The tutorial uses these prepared databases:
+
+- `data/syntheaCDM_tutorial_broken.duckdb`: contains all injected issues
+- `data/syntheaCDM_tutorial_after_fatal.duckdb`: fatal issues already fixed
+- `data/syntheaCDM_tutorial_after_convention.duckdb`: fatal and convention issues already fixed
+
+::: {.callout-note}
+Each stage works on a temporary copy of the corresponding snapshot. That lets you rerun chunks without corrupting the prepared reference databases.
+:::
+
+## Stage 1: Fatal Checks
+
+We begin from the fully broken tutorial snapshot and run only `fatal` DQD checks.
+
+```{r fatal-prepare-working-db}
+fatal_work_db <- file.path(quarto_work_dir, "fatal-working.duckdb")
+copy_database_file(snapshot_paths$broken, fatal_work_db, overwrite = TRUE)
+fatal_before_json <- file.path(repo_root, "dqd_output", "results", "quarto-fatal-before.json")
+fatal_after_json <- file.path(repo_root, "dqd_output", "results", "quarto-fatal-after.json")
+```
+
+```{r fatal-run-dqd}
+fatal_before <- run_dqd(
+  db_path = fatal_work_db,
+  cdm_source_name = "SyntheaTutorialFatal",
+  check_severity = "fatal",
+  output_json_path = fatal_before_json,
+  verbose_mode = TRUE,
+  write_to_table = FALSE
+)
+```
+
+```{r fatal-inspect-results}
+fatal_targets <- filter_dqd_results(
+  fatal_before,
+  check_names = c("isPrimaryKey", "measureObservationPeriodOverlap")
+)
+
+fatal_targets[
+  fatal_targets$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows")
+]
+```
+
+::: {.callout-note}
+What to notice: the staged fatal section is centered on duplicate `MEASUREMENT_ID` values and overlapping `OBSERVATION_PERIOD` rows for a single person.
+:::
+
+## Stage 1 Investigation SQL
+
+### Duplicate `MEASUREMENT_ID`
+
+```{r fatal-duplicate-sql, results='asis'}
+cat("```sql\n", get_issue_sql("fatal_duplicate_measurement_pk"), "\n```", sep = "")
+```
+
+```{r fatal-find-duplicate-measurement-id}
+fatal_connection <- connect_duckdb(fatal_work_db, read_only = TRUE)
+duplicate_measurements <- dbGetQuery(
+  fatal_connection,
+  get_issue_sql("fatal_duplicate_measurement_pk")
+)
+disconnect_duckdb(fatal_connection)
+
+duplicate_measurements
+```
+
+### Overlapping observation periods
+
+```{r fatal-overlap-sql, results='asis'}
+cat("```sql\n", get_issue_sql("fatal_observation_period_overlap"), "\n```", sep = "")
+```
+
+```{r fatal-find-overlap}
+fatal_connection <- connect_duckdb(fatal_work_db, read_only = TRUE)
+observation_period_overlap <- dbGetQuery(
+  fatal_connection,
+  get_issue_sql("fatal_observation_period_overlap")
+)
+disconnect_duckdb(fatal_connection)
+
+observation_period_overlap
+```
+
+## Stage 1 Fixes
+
+Now apply the fatal fixes directly to the working copy.
+
+```{r fatal-fix-issues}
+fatal_connection <- connect_duckdb(fatal_work_db, read_only = FALSE)
+apply_fatal_fixes(fatal_connection, stage = "quarto-fatal")
+disconnect_duckdb(fatal_connection)
+```
+
+## Stage 1 Rerun and Verification
+
+```{r fatal-rerun-dqd}
+fatal_after <- run_dqd(
+  db_path = fatal_work_db,
+  cdm_source_name = "SyntheaTutorialFatalFixed",
+  check_severity = "fatal",
+  output_json_path = fatal_after_json,
+  verbose_mode = TRUE,
+  write_to_table = FALSE
+)
+```
+
+```{r fatal-verify}
+fatal_after_targets <- filter_dqd_results(
+  fatal_after,
+  check_names = c("isPrimaryKey", "measureObservationPeriodOverlap")
+)
+
+fatal_after_targets[
+  fatal_after_targets$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows")
+]
+```
+
+::: {.callout-note}
+Expected outcome: the injected fatal findings should be resolved after the rerun.
+:::
+
+## Stage 2: Convention Checks
+
+The convention stage starts from the prepared snapshot where the fatal issues are already fixed.
+
+```{r convention-prepare-working-db}
+convention_work_db <- file.path(quarto_work_dir, "convention-working.duckdb")
+copy_database_file(snapshot_paths$after_fatal, convention_work_db, overwrite = TRUE)
+convention_before_json <- file.path(repo_root, "dqd_output", "results", "quarto-convention-before.json")
+convention_after_json <- file.path(repo_root, "dqd_output", "results", "quarto-convention-after.json")
+```
+
+```{r convention-run-dqd}
+convention_before <- run_dqd(
+  db_path = convention_work_db,
+  cdm_source_name = "SyntheaTutorialConvention",
+  check_severity = "convention",
+  output_json_path = convention_before_json,
+  verbose_mode = TRUE,
+  write_to_table = FALSE
+)
+```
+
+```{r convention-inspect-results}
+convention_targets <- filter_dqd_results(
+  convention_before,
+  check_names = c("measurePersonCompleteness", "measureConditionEraCompleteness")
+)
+
+convention_targets[
+  convention_targets$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+]
+```
+
+## Stage 2 Investigation SQL
+
+### Missing procedure coverage
+
+```{r convention-procedure-sql, results='asis'}
+cat("```sql\n", get_issue_sql("convention_procedure_person_completeness"), "\n```", sep = "")
+```
+
+```{r convention-find-procedure-gap}
+convention_connection <- connect_duckdb(convention_work_db, read_only = TRUE)
+procedure_gap <- dbGetQuery(
+  convention_connection,
+  get_issue_sql("convention_procedure_person_completeness")
+)
+disconnect_duckdb(convention_connection)
+
+head(procedure_gap, 20)
+```
+
+### Missing condition eras
+
+```{r convention-condition-era-sql, results='asis'}
+cat("```sql\n", get_issue_sql("convention_condition_era_completeness"), "\n```", sep = "")
+```
+
+```{r convention-find-condition-era-gap}
+convention_connection <- connect_duckdb(convention_work_db, read_only = TRUE)
+condition_era_gap <- dbGetQuery(
+  convention_connection,
+  get_issue_sql("convention_condition_era_completeness")
+)
+disconnect_duckdb(convention_connection)
+
+condition_era_gap
+```
+
+## Stage 2 Fixes
+
+```{r convention-fix-issues}
+convention_connection <- connect_duckdb(convention_work_db, read_only = FALSE)
+apply_convention_fixes(convention_connection, stage = "quarto-convention")
+disconnect_duckdb(convention_connection)
+```
+
+## Stage 2 Rerun and Verification
+
+```{r convention-rerun-dqd}
+convention_after <- run_dqd(
+  db_path = convention_work_db,
+  cdm_source_name = "SyntheaTutorialConventionFixed",
+  check_severity = "convention",
+  output_json_path = convention_after_json,
+  verbose_mode = TRUE,
+  write_to_table = FALSE
+)
+```
+
+```{r convention-verify}
+convention_after_targets <- filter_dqd_results(
+  convention_after,
+  check_names = c("measurePersonCompleteness", "measureConditionEraCompleteness")
+)
+
+convention_after_targets[
+  convention_after_targets$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+]
+```
+
+::: {.callout-note}
+Expected outcome: the procedure coverage gap and missing condition era gap should no longer appear after the convention rerun.
+:::
+
+## Stage 3: Characterization Checks
+
+The characterization stage starts from the prepared snapshot where fatal and convention issues are already fixed.
+
+```{r characterization-prepare-working-db}
+characterization_work_db <- file.path(quarto_work_dir, "characterization-working.duckdb")
+copy_database_file(snapshot_paths$after_convention, characterization_work_db, overwrite = TRUE)
+characterization_before_json <- file.path(repo_root, "dqd_output", "results", "quarto-characterization-before.json")
+characterization_after_json <- file.path(repo_root, "dqd_output", "results", "quarto-characterization-after.json")
+```
+
+```{r characterization-run-dqd}
+characterization_before <- run_dqd(
+  db_path = characterization_work_db,
+  cdm_source_name = "SyntheaTutorialCharacterization",
+  check_severity = "characterization",
+  output_json_path = characterization_before_json,
+  verbose_mode = TRUE,
+  write_to_table = FALSE
+)
+```
+
+```{r characterization-inspect-results}
+characterization_targets <- filter_dqd_results(
+  characterization_before,
+  check_names = c("withinVisitDates", "plausibleStartBeforeEnd")
+)
+
+characterization_targets[
+  characterization_targets$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+]
+```
+
+## Stage 3 Investigation SQL
+
+### Observations outside the visit window
+
+```{r characterization-observation-sql, results='asis'}
+cat("```sql\n", get_issue_sql("characterization_observation_within_visit_dates"), "\n```", sep = "")
+```
+
+```{r characterization-find-observation-dates}
+characterization_connection <- connect_duckdb(characterization_work_db, read_only = TRUE)
+observation_window_failures <- dbGetQuery(
+  characterization_connection,
+  get_issue_sql("characterization_observation_within_visit_dates")
+)
+disconnect_duckdb(characterization_connection)
+
+head(observation_window_failures, 20)
+```
+
+### Drug exposures with end date before start date
+
+```{r characterization-drug-sql, results='asis'}
+cat("```sql\n", get_issue_sql("characterization_drug_start_before_end"), "\n```", sep = "")
+```
+
+```{r characterization-find-drug-dates}
+characterization_connection <- connect_duckdb(characterization_work_db, read_only = TRUE)
+drug_date_failures <- dbGetQuery(
+  characterization_connection,
+  get_issue_sql("characterization_drug_start_before_end")
+)
+disconnect_duckdb(characterization_connection)
+
+drug_date_failures
+```
+
+## Stage 3 Fixes
+
+```{r characterization-fix-issues}
+characterization_connection <- connect_duckdb(characterization_work_db, read_only = FALSE)
+apply_characterization_fixes(characterization_connection, stage = "quarto-characterization")
+disconnect_duckdb(characterization_connection)
+```
+
+## Stage 3 Rerun and Verification
+
+```{r characterization-rerun-dqd}
+characterization_after <- run_dqd(
+  db_path = characterization_work_db,
+  cdm_source_name = "SyntheaTutorialCharacterizationFixed",
+  check_severity = "characterization",
+  output_json_path = characterization_after_json,
+  verbose_mode = TRUE,
+  write_to_table = FALSE
+)
+```
+
+```{r characterization-verify}
+characterization_after_targets <- filter_dqd_results(
+  characterization_after,
+  check_names = c("withinVisitDates", "plausibleStartBeforeEnd")
+)
+
+characterization_after_targets[
+  characterization_after_targets$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+]
+```
+
+::: {.callout-note}
+Expected outcome: the tutorial-specific characterization findings should disappear after the rerun.
+:::
+
+## Wrap-up and Discussion
+
+This tutorial used prepared snapshots to keep the exercise deterministic while still letting you inspect the failing rows, apply live fixes, and verify the changes with DQD reruns.
+
+From here you can:
+
+- compare the tutorial snapshots against the clean baseline
+- open the saved JSON outputs in the DQD dashboard
+- adapt the helper functions to create additional teaching scenarios

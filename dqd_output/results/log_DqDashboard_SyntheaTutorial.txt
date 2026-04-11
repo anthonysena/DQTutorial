@@ -1,0 +1,38 @@
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmTable
+2026-04-10 17:55:10	[Main thread]	INFO	readr	cli_block	 ── Column specification ──────────────────────────────────────────────────────── cols(   checkLevel = col_character(),   checkName = col_character(),   checkDescription = col_character(),   kahnContext = col_character(),   kahnCategory = col_character(),   kahnSubcategory = col_character(),   sqlFile = col_character(),   evaluationFilter = col_character(),   severity = col_character() ) 
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
+2026-04-10 17:55:10	[Main thread]	WARN	DataQualityDashboard	executeDqChecks	DEPRECATION WARNING - The plausibleDuringLife check has been reimplemented with the plausibleBeforeDeath check.
+2026-04-10 17:55:10	[Main thread]	WARN	DataQualityDashboard	executeDqChecks	DEPRECATION WARNING - The plausibleTemporalAfter check has been reimplemented with the plausibleAfterBirth and plausibleStartBeforeEnd checks.
+2026-04-10 17:55:10	[Main thread]	WARN	DataQualityDashboard	executeDqChecks	DEPRECATION WARNING - The plausibleGender check has been reimplemented with the plausibleGenderUseDescendants check.
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureValueCompleteness
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureConditionEraCompleteness
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: fkDomain
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureObservationPeriodOverlap
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmField
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: fkClass
+2026-04-10 17:55:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isStandardValidConcept
+2026-04-10 17:55:11	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: standardConceptRecordCompleteness
+2026-04-10 17:55:13	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: sourceConceptRecordCompleteness
+2026-04-10 17:55:13	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: sourceValueCompleteness
+2026-04-10 17:55:14	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: dqd_output/results/synthea-tutorial-convention.json
+2026-04-10 17:55:14	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete
+2026-04-10 17:55:15	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleValueLow
+2026-04-10 17:55:16	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isRequired
+2026-04-10 17:55:16	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleValueHigh
+2026-04-10 17:55:17	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleTemporalAfter
+2026-04-10 17:55:18	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmDatatype
+2026-04-10 17:55:18	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleDuringLife
+2026-04-10 17:55:19	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: withinVisitDates
+2026-04-10 17:55:19	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleAfterBirth
+2026-04-10 17:55:20	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleBeforeDeath
+2026-04-10 17:55:20	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleStartBeforeEnd
+2026-04-10 17:55:21	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isPrimaryKey
+2026-04-10 17:55:21	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleGender
+2026-04-10 17:55:21	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isForeignKey
+2026-04-10 17:55:25	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: dqd_output/results/synthea-tutorial-fatal.json
+2026-04-10 17:55:25	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete
+2026-04-10 17:55:25	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleGenderUseDescendants
+2026-04-10 17:55:25	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: plausibleUnitConceptIds
+2026-04-10 17:55:29	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: dqd_output/results/synthea-tutorial-characterization.json
+2026-04-10 17:55:29	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete
