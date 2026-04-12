@@ -1,10 +1,10 @@
-2026-04-10 17:57:06	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
-2026-04-10 17:57:06	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmTable
-2026-04-10 17:57:07	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureObservationPeriodOverlap
-2026-04-10 17:57:07	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmField
-2026-04-10 17:57:12	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isRequired
-2026-04-10 17:57:14	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmDatatype
-2026-04-10 17:57:17	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isPrimaryKey
-2026-04-10 17:57:18	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isForeignKey
-2026-04-10 17:57:21	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: C:/git/anthonysena/DQTutorial/dqd_output/results/quarto-fatal-before.json
-2026-04-10 17:57:21	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete
+2026-04-12 09:21:57	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
+2026-04-12 09:21:57	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmTable
+2026-04-12 09:21:58	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureObservationPeriodOverlap
+2026-04-12 09:21:58	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmField
+2026-04-12 09:22:03	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isRequired
+2026-04-12 09:22:05	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmDatatype
+2026-04-12 09:22:08	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isPrimaryKey
+2026-04-12 09:22:08	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isForeignKey
+2026-04-12 09:22:12	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: C:/git/anthonysena/DQTutorial/dqd_output/results/quarto-fatal-before.json
+2026-04-12 09:22:12	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete

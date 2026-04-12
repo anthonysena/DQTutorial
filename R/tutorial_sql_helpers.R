@@ -42,6 +42,32 @@ tutorial_issue_catalog <- data.frame(
   stringsAsFactors = FALSE
 )
 
+get_tutorial_check_metadata <- function(cdm_version = "5.4") {
+  checks <- DataQualityDashboard::listDqChecks(cdmVersion = cdm_version)
+  descriptions <- as.data.frame(checks$checkDescriptions, stringsAsFactors = FALSE)
+  merge(
+    tutorial_issue_catalog,
+    descriptions,
+    by.x = c("target_check", "severity"),
+    by.y = c("checkName", "severity"),
+    all.x = TRUE,
+    sort = FALSE
+  )
+}
+
+get_dqd_template_path <- function(sql_file, dbms = "sql_server") {
+  system.file(file.path("sql", dbms, sql_file), package = "DataQualityDashboard")
+}
+
+read_dqd_template <- function(sql_file, dbms = "sql_server") {
+  template_path <- get_dqd_template_path(sql_file, dbms = dbms)
+  if (!nzchar(template_path) || !file.exists(template_path)) {
+    stop("Could not locate DQD SQL template for: ", sql_file)
+  }
+
+  paste(readLines(template_path, warn = FALSE), collapse = "\n")
+}
+
 initialize_tutorial_tables <- function(connection) {
   DBI::dbExecute(connection, "
     CREATE OR REPLACE TABLE main.tutorial_issue_registry (
