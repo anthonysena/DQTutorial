@@ -10,27 +10,31 @@ execute:
 
 ## Introduction
 
-This tutorial walks through a staged DQD workflow on a synthetic OMOP CDM built from Synthea. The tutorial data has six curated issues distributed across `fatal`, `convention`, and `characterization` severities.
+This tutorial is designed to help OHDSI users understand how the DataQualityDashboard (DQD) thinks about data quality, how to inspect a finding, and how to reason about remediation. The tutorial uses a synthetic OMOP CDM built from Synthea plus a small set of injected failures across `fatal`, `convention`, and `characterization`.
 
-Each stage follows the same pattern:
+The goal is not only to show how to run DQD, but to show how to go from:
 
-1. run DQD for the current severity
-2. inspect the failures
-3. query the CDM to find the bad rows
-4. apply the fix
-5. rerun DQD to verify the fix
+1. a failed check in DQD
+2. to the metadata that defines the check
+3. to the SQL template shipped in the DQD package
+4. to a readable diagnostic query you can use to investigate the affected rows
+5. to a discussion of realistic remediation paths
 
-The prepared snapshots keep each stage deterministic without mutating the clean baseline.
+The tutorial still demonstrates a local fix in the working copy, but those fixes should be read as tutorial examples rather than the universal production response.
 
 ## Environment and Package Setup
 
 ```{r setup}
 library(DBI)
 library(duckdb)
+library(DatabaseConnector)
 library(DataQualityDashboard)
 library(jsonlite)
 
-repo_root_candidates <- c(getwd(), normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE))
+repo_root_candidates <- c(
+  getwd(),
+  normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE)
+)
 repo_root <- repo_root_candidates[
   file.exists(file.path(repo_root_candidates, "R", "dqd_helpers.R"))
 ][1]
@@ -57,101 +61,262 @@ if (length(missing_snapshots) > 0) {
   )
 }
 
-quarto_work_dir <- file.path("dqd_output", "quarto-work")
 quarto_work_dir <- file.path(repo_root, "dqd_output", "quarto-work")
+results_dir <- file.path(repo_root, "dqd_output", "results")
 ensure_dir(quarto_work_dir)
-ensure_dir(file.path(repo_root, "dqd_output", "results"))
+ensure_dir(results_dir)
+
+dq_checks <- DataQualityDashboard::listDqChecks(cdmVersion = "5.4")
+tutorial_checks <- get_tutorial_check_metadata(cdm_version = "5.4")
+dqd_sql_dir <- system.file("sql/sql_server", package = "DataQualityDashboard")
+
+show_sql_block <- function(sql_text) {
+  cat("```sql\n", sql_text, "\n```\n", sep = "")
+}
+
+show_template_for_check <- function(sql_file) {
+  show_sql_block(read_dqd_template(sql_file))
+}
 ```
+
+## How DQD Organizes Checks
+
+DQD evaluates the OMOP CDM through multiple lenses:
+
+- `TABLE` checks look at whether expected tables exist and whether table-level expectations are satisfied.
+- `FIELD` checks look at requiredness, keys, datatypes, completeness, and temporal logic at the column level.
+- `CONCEPT` checks look at concept-level plausibility and semantic use patterns.
+
+DQD also labels checks by severity:
+
+- `fatal`: structural issues that can invalidate downstream analysis or indicate the CDM is not being represented safely.
+- `convention`: OMOP usage expectations and semantic consistency checks.
+- `characterization`: screening signals for plausibility and completeness patterns that deserve investigation.
+
+The key fields you see in DQD results are intended to be interpretable:
+
+- `checkName`: the reusable check family
+- `checkDescription`: what DQD is asking
+- `checkLevel`: table, field, or concept
+- `cdmTableName` and `cdmFieldName`: where the check applies
+- `numViolatedRows` and `pctViolatedRows`: how much evidence DQD found
+- `thresholdValue`: the expected tolerance for failure
+- `sqlFile`: the package SQL template behind the check
+- `category`, `subcategory`, and `context`: the DQD/Kahn framing for the check
+
+```{r tutorial-check-overview}
+tutorial_checks[
+  ,
+  c(
+    "target_check",
+    "severity",
+    "checkLevel",
+    "kahnCategory",
+    "kahnSubcategory",
+    "kahnContext",
+    "sqlFile"
+  )
+]
+```
+
+## The Kahn Framework in DQD
+
+DQD maps checks to the Kahn framework so that a finding is not just “bad data,” but a signal about the kind of quality question being raised.
+
+- Conformance means the data fits the expected structural or semantic representation of OMOP.
+- Completeness means the data is present to the degree expected for the domain or field.
+- Plausibility means the values or dates are believable enough to support intended use, while still allowing for legitimate real-world edge cases.
+
+In practice:
+
+- a **conformance** finding often points to ETL logic, key management, or schema relationships
+- a **completeness** finding often points to missing source extraction, derivation gaps, or scoped omissions
+- a **plausibility** finding often points to chronology, linkage, or workflow timing problems that require interpretation
+
+DQD is surfacing screening signals. It is not adjudicating root cause. A failed check should usually start a conversation that includes data owners, ETL maintainers, and sometimes source-system stakeholders.
 
 ## Tutorial Assets and Snapshot Overview
 
-The tutorial uses these prepared databases:
+This tutorial uses prepared snapshot databases:
 
-- `data/syntheaCDM_tutorial_broken.duckdb`: contains all injected issues
-- `data/syntheaCDM_tutorial_after_fatal.duckdb`: fatal issues already fixed
-- `data/syntheaCDM_tutorial_after_convention.duckdb`: fatal and convention issues already fixed
+- `data/syntheaCDM_tutorial_broken.duckdb`
+- `data/syntheaCDM_tutorial_after_fatal.duckdb`
+- `data/syntheaCDM_tutorial_after_convention.duckdb`
+
+Each stage starts from a deterministic snapshot. We copy that snapshot into a temporary working DuckDB file, inspect the findings, apply a demonstration fix, and rerun DQD.
 
 ::: {.callout-note}
-Each stage works on a temporary copy of the corresponding snapshot. That lets you rerun chunks without corrupting the prepared reference databases.
+The prepared snapshots make the tutorial reproducible. The local fix steps are there to make the DQD feedback loop visible, not to imply that production remediation should happen with ad hoc SQL patches.
 :::
 
 ## Stage 1: Fatal Checks
 
-We begin from the fully broken tutorial snapshot and run only `fatal` DQD checks.
+Fatal checks focus on structural risks. These are the issues most likely to invalidate downstream analytics or indicate that the CDM representation itself is unreliable.
+
+For this tutorial, the two fatal targets are:
+
+- `isPrimaryKey` on `MEASUREMENT.MEASUREMENT_ID`
+- `measureObservationPeriodOverlap` on `OBSERVATION_PERIOD`
+
+```{r fatal-check-metadata}
+subset(
+  tutorial_checks,
+  severity == "fatal",
+  select = c(
+    "target_check",
+    "checkDescription",
+    "checkLevel",
+    "kahnCategory",
+    "kahnSubcategory",
+    "kahnContext",
+    "sqlFile"
+  )
+)
+```
 
 ```{r fatal-prepare-working-db}
 fatal_work_db <- file.path(quarto_work_dir, "fatal-working.duckdb")
 copy_database_file(snapshot_paths$broken, fatal_work_db, overwrite = TRUE)
-fatal_before_json <- file.path(repo_root, "dqd_output", "results", "quarto-fatal-before.json")
-fatal_after_json <- file.path(repo_root, "dqd_output", "results", "quarto-fatal-after.json")
+fatal_before_json <- file.path(results_dir, "quarto-fatal-before.json")
+fatal_after_json <- file.path(results_dir, "quarto-fatal-after.json")
+
+fatal_connection_details <- DatabaseConnector::createConnectionDetails(
+  dbms = "duckdb",
+  server = fatal_work_db
+)
 ```
 
+### Run DQD Directly
+
 ```{r fatal-run-dqd}
-fatal_before <- run_dqd(
-  db_path = fatal_work_db,
-  cdm_source_name = "SyntheaTutorialFatal",
-  check_severity = "fatal",
-  output_json_path = fatal_before_json,
-  verbose_mode = TRUE,
-  write_to_table = FALSE
+fatal_before <- DataQualityDashboard::executeDqChecks(
+  connectionDetails = fatal_connection_details,
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
+  cdmSourceName = "SyntheaTutorialFatal",
+  numThreads = 1,
+  sqlOnly = FALSE,
+  outputFolder = results_dir,
+  outputFile = basename(fatal_before_json),
+  verboseMode = TRUE,
+  writeToTable = FALSE,
+  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
+  checkSeverity = "fatal",
+  cdmVersion = "5.4"
 )
 ```
 
 ```{r fatal-inspect-results}
-fatal_targets <- filter_dqd_results(
-  fatal_before,
-  check_names = c("isPrimaryKey", "measureObservationPeriodOverlap")
-)
-
-fatal_targets[
-  fatal_targets$numViolatedRows > 0,
-  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows")
+fatal_targets <- fatal_before$CheckResults[
+  fatal_before$CheckResults$checkName %in% c("isPrimaryKey", "measureObservationPeriodOverlap") &
+    fatal_before$CheckResults$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "sqlFile", "category", "subcategory", "context")
 ]
+
+fatal_targets
 ```
 
-::: {.callout-note}
-What to notice: the staged fatal section is centered on duplicate `MEASUREMENT_ID` values and overlapping `OBSERVATION_PERIOD` rows for a single person.
-:::
+### Fatal Check 1: Duplicate `MEASUREMENT_ID`
 
-## Stage 1 Investigation SQL
+Duplicate primary keys are a structural problem. In OMOP, record identifiers are used to anchor joins, maintain row identity, and avoid accidental duplication in downstream logic. If two different rows share the same identifier, the ambiguity may propagate into analytic datasets and audit trails.
 
-### Duplicate `MEASUREMENT_ID`
+In a production setting, the remediation usually starts upstream:
 
-```{r fatal-duplicate-sql, results='asis'}
-cat("```sql\n", get_issue_sql("fatal_duplicate_measurement_pk"), "\n```", sep = "")
+- review source-system identifiers
+- inspect the ETL rule that generates or preserves primary keys
+- determine whether the issue is duplication, collision, or incorrect deduplication
+- rerun the ETL or controlled backfill after the root cause is understood
+
+For this tutorial, we will still apply a local fix in the working copy, but only as one demonstration path.
+
+```{r fatal-primary-key-metadata}
+subset(
+  tutorial_checks,
+  target_check == "isPrimaryKey" & table_name == "MEASUREMENT",
+  select = c("target_check", "checkDescription", "kahnCategory", "kahnSubcategory", "kahnContext", "sqlFile")
+)
+```
+
+```{r fatal-primary-key-template-path}
+fatal_primary_key_sql_file <- subset(
+  tutorial_checks,
+  target_check == "isPrimaryKey" & table_name == "MEASUREMENT"
+)$sqlFile[1]
+
+fatal_primary_key_template_path <- get_dqd_template_path(fatal_primary_key_sql_file)
+fatal_primary_key_template_path
+```
+
+```{r fatal-primary-key-template, results='asis'}
+show_template_for_check(fatal_primary_key_sql_file)
+```
+
+The package SQL template is generic. DQD renders and translates that logic to the target database. For investigation, it is often easier to write a readable SQL query that expresses the same logic directly against the affected table.
+
+```{r fatal-primary-key-diagnostic-sql, results='asis'}
+fatal_primary_key_diagnostic_sql <- get_issue_sql("fatal_duplicate_measurement_pk")
+show_sql_block(fatal_primary_key_diagnostic_sql)
 ```
 
 ```{r fatal-find-duplicate-measurement-id}
 fatal_connection <- connect_duckdb(fatal_work_db, read_only = TRUE)
-duplicate_measurements <- dbGetQuery(
-  fatal_connection,
-  get_issue_sql("fatal_duplicate_measurement_pk")
-)
+duplicate_measurements <- dbGetQuery(fatal_connection, fatal_primary_key_diagnostic_sql)
 disconnect_duckdb(fatal_connection)
 
 duplicate_measurements
 ```
 
-### Overlapping observation periods
+### Fatal Check 2: Overlapping `OBSERVATION_PERIOD`
 
-```{r fatal-overlap-sql, results='asis'}
-cat("```sql\n", get_issue_sql("fatal_observation_period_overlap"), "\n```", sep = "")
+Observation periods are used to define when a person is considered under observation. Overlap can distort denominators, incidence calculations, and cohort logic if the same span of time is counted inconsistently. In a real environment, overlap may reflect business rules in observation-period derivation rather than a simple one-row problem.
+
+Potential remediation paths include:
+
+- review how contributing event windows are combined into observation periods
+- inspect whether overlap should be merged, split, or removed
+- verify whether payer enrollment, claims, or EHR events are being interpreted correctly
+- rerun derivation logic after the business rule is clarified
+
+The tutorial fix deletes the injected overlapping row so the DQD feedback loop is easy to see.
+
+```{r fatal-overlap-metadata}
+subset(
+  tutorial_checks,
+  target_check == "measureObservationPeriodOverlap",
+  select = c("target_check", "checkDescription", "kahnCategory", "kahnSubcategory", "kahnContext", "sqlFile")
+)
+```
+
+```{r fatal-overlap-template-path}
+fatal_overlap_sql_file <- subset(
+  tutorial_checks,
+  target_check == "measureObservationPeriodOverlap"
+)$sqlFile[1]
+
+fatal_overlap_template_path <- get_dqd_template_path(fatal_overlap_sql_file)
+fatal_overlap_template_path
+```
+
+```{r fatal-overlap-template, results='asis'}
+show_template_for_check(fatal_overlap_sql_file)
+```
+
+```{r fatal-overlap-diagnostic-sql, results='asis'}
+fatal_overlap_diagnostic_sql <- get_issue_sql("fatal_observation_period_overlap")
+show_sql_block(fatal_overlap_diagnostic_sql)
 ```
 
 ```{r fatal-find-overlap}
 fatal_connection <- connect_duckdb(fatal_work_db, read_only = TRUE)
-observation_period_overlap <- dbGetQuery(
-  fatal_connection,
-  get_issue_sql("fatal_observation_period_overlap")
-)
+observation_period_overlap <- dbGetQuery(fatal_connection, fatal_overlap_diagnostic_sql)
 disconnect_duckdb(fatal_connection)
 
 observation_period_overlap
 ```
 
-## Stage 1 Fixes
+### Demonstration Remediation
 
-Now apply the fatal fixes directly to the working copy.
+The fix chunk below uses a tutorial convenience helper. It is intentionally not the main lesson. The main lesson is how to interpret the finding, find the relevant rows, and think through root-cause-oriented remediation.
 
 ```{r fatal-fix-issues}
 fatal_connection <- connect_duckdb(fatal_work_db, read_only = FALSE)
@@ -159,106 +324,197 @@ apply_fatal_fixes(fatal_connection, stage = "quarto-fatal")
 disconnect_duckdb(fatal_connection)
 ```
 
-## Stage 1 Rerun and Verification
+### Rerun and Verify
 
 ```{r fatal-rerun-dqd}
-fatal_after <- run_dqd(
-  db_path = fatal_work_db,
-  cdm_source_name = "SyntheaTutorialFatalFixed",
-  check_severity = "fatal",
-  output_json_path = fatal_after_json,
-  verbose_mode = TRUE,
-  write_to_table = FALSE
+fatal_after <- DataQualityDashboard::executeDqChecks(
+  connectionDetails = fatal_connection_details,
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
+  cdmSourceName = "SyntheaTutorialFatalFixed",
+  numThreads = 1,
+  sqlOnly = FALSE,
+  outputFolder = results_dir,
+  outputFile = basename(fatal_after_json),
+  verboseMode = TRUE,
+  writeToTable = FALSE,
+  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
+  checkSeverity = "fatal",
+  cdmVersion = "5.4"
 )
 ```
 
 ```{r fatal-verify}
-fatal_after_targets <- filter_dqd_results(
-  fatal_after,
-  check_names = c("isPrimaryKey", "measureObservationPeriodOverlap")
-)
-
-fatal_after_targets[
-  fatal_after_targets$numViolatedRows > 0,
-  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows")
+fatal_after$CheckResults[
+  fatal_after$CheckResults$checkName %in% c("isPrimaryKey", "measureObservationPeriodOverlap") &
+    fatal_after$CheckResults$numViolatedRows > 0,
+  c("checkName", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows")
 ]
 ```
 
-::: {.callout-note}
-Expected outcome: the injected fatal findings should be resolved after the rerun.
-:::
-
 ## Stage 2: Convention Checks
 
-The convention stage starts from the prepared snapshot where the fatal issues are already fixed.
+Convention checks are not always hard structural failures. They often ask whether the OMOP CDM is being used in the expected way and whether domain coverage or derivation behavior looks reasonable.
+
+For this tutorial, the two convention targets are:
+
+- `measurePersonCompleteness`
+- `measureConditionEraCompleteness`
+
+```{r convention-check-metadata}
+subset(
+  tutorial_checks,
+  severity == "convention",
+  select = c(
+    "target_check",
+    "checkDescription",
+    "checkLevel",
+    "kahnCategory",
+    "kahnSubcategory",
+    "kahnContext",
+    "sqlFile"
+  )
+)
+```
 
 ```{r convention-prepare-working-db}
 convention_work_db <- file.path(quarto_work_dir, "convention-working.duckdb")
 copy_database_file(snapshot_paths$after_fatal, convention_work_db, overwrite = TRUE)
-convention_before_json <- file.path(repo_root, "dqd_output", "results", "quarto-convention-before.json")
-convention_after_json <- file.path(repo_root, "dqd_output", "results", "quarto-convention-after.json")
+convention_before_json <- file.path(results_dir, "quarto-convention-before.json")
+convention_after_json <- file.path(results_dir, "quarto-convention-after.json")
+
+convention_connection_details <- DatabaseConnector::createConnectionDetails(
+  dbms = "duckdb",
+  server = convention_work_db
+)
 ```
 
+### Run DQD Directly
+
 ```{r convention-run-dqd}
-convention_before <- run_dqd(
-  db_path = convention_work_db,
-  cdm_source_name = "SyntheaTutorialConvention",
-  check_severity = "convention",
-  output_json_path = convention_before_json,
-  verbose_mode = TRUE,
-  write_to_table = FALSE
+convention_before <- DataQualityDashboard::executeDqChecks(
+  connectionDetails = convention_connection_details,
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
+  cdmSourceName = "SyntheaTutorialConvention",
+  numThreads = 1,
+  sqlOnly = FALSE,
+  outputFolder = results_dir,
+  outputFile = basename(convention_before_json),
+  verboseMode = TRUE,
+  writeToTable = FALSE,
+  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
+  checkSeverity = "convention",
+  cdmVersion = "5.4"
 )
 ```
 
 ```{r convention-inspect-results}
-convention_targets <- filter_dqd_results(
-  convention_before,
-  check_names = c("measurePersonCompleteness", "measureConditionEraCompleteness")
-)
-
-convention_targets[
-  convention_targets$numViolatedRows > 0,
-  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+convention_targets <- convention_before$CheckResults[
+  convention_before$CheckResults$checkName %in% c("measurePersonCompleteness", "measureConditionEraCompleteness") &
+    convention_before$CheckResults$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue", "sqlFile", "category", "subcategory", "context")
 ]
+
+convention_targets
 ```
 
-## Stage 2 Investigation SQL
+### Convention Check 1: Person Coverage in `PROCEDURE_OCCURRENCE`
 
-### Missing procedure coverage
+Low person-level coverage in a domain can signal ETL omissions, incomplete source extracts, or business rules that excluded data unexpectedly. It is often a domain-scoped issue rather than an error on one individual row. Thresholds in DQD are expectations, not universal truths, so the right interpretation depends on the source and use case.
 
-```{r convention-procedure-sql, results='asis'}
-cat("```sql\n", get_issue_sql("convention_procedure_person_completeness"), "\n```", sep = "")
+Potential remediation paths include:
+
+- review the source extract for procedure data
+- confirm whether some procedures were intentionally excluded
+- inspect mapping or ingestion rules
+- verify whether the domain should have broad person coverage in this source
+
+The tutorial remediation restores deleted rows, but in a real environment the better fix often lives in extraction, transformation, or derivation logic.
+
+```{r convention-person-completeness-metadata}
+subset(
+  tutorial_checks,
+  target_check == "measurePersonCompleteness",
+  select = c("target_check", "checkDescription", "kahnCategory", "kahnSubcategory", "kahnContext", "sqlFile")
+)
+```
+
+```{r convention-person-completeness-template-path}
+convention_person_sql_file <- subset(
+  tutorial_checks,
+  target_check == "measurePersonCompleteness"
+)$sqlFile[1]
+
+get_dqd_template_path(convention_person_sql_file)
+```
+
+```{r convention-person-completeness-template, results='asis'}
+show_template_for_check(convention_person_sql_file)
+```
+
+```{r convention-person-completeness-diagnostic-sql, results='asis'}
+convention_person_diagnostic_sql <- get_issue_sql("convention_procedure_person_completeness")
+show_sql_block(convention_person_diagnostic_sql)
 ```
 
 ```{r convention-find-procedure-gap}
 convention_connection <- connect_duckdb(convention_work_db, read_only = TRUE)
-procedure_gap <- dbGetQuery(
-  convention_connection,
-  get_issue_sql("convention_procedure_person_completeness")
-)
+procedure_gap <- dbGetQuery(convention_connection, convention_person_diagnostic_sql)
 disconnect_duckdb(convention_connection)
 
 head(procedure_gap, 20)
 ```
 
-### Missing condition eras
+### Convention Check 2: `CONDITION_ERA` Completeness
 
-```{r convention-condition-era-sql, results='asis'}
-cat("```sql\n", get_issue_sql("convention_condition_era_completeness"), "\n```", sep = "")
+Condition eras are derived constructs. Missing eras often point to a derivation pipeline issue, not simply a bad base event row. That is why this kind of finding is useful operationally: it can tell you that a downstream derived table is not behaving as expected even when the base clinical event table appears populated.
+
+Potential remediation paths include:
+
+- rerun condition era derivation after source or ETL corrections
+- review the era-building logic and the assumptions behind it
+- verify whether the available condition events should generate eras in the first place
+
+The tutorial remediation restores deleted backup rows so that you can see the DQD rerun behavior clearly.
+
+```{r convention-condition-era-metadata}
+subset(
+  tutorial_checks,
+  target_check == "measureConditionEraCompleteness",
+  select = c("target_check", "checkDescription", "kahnCategory", "kahnSubcategory", "kahnContext", "sqlFile")
+)
+```
+
+```{r convention-condition-era-template-path}
+convention_condition_sql_file <- subset(
+  tutorial_checks,
+  target_check == "measureConditionEraCompleteness"
+)$sqlFile[1]
+
+get_dqd_template_path(convention_condition_sql_file)
+```
+
+```{r convention-condition-era-template, results='asis'}
+show_template_for_check(convention_condition_sql_file)
+```
+
+```{r convention-condition-era-diagnostic-sql, results='asis'}
+convention_condition_diagnostic_sql <- get_issue_sql("convention_condition_era_completeness")
+show_sql_block(convention_condition_diagnostic_sql)
 ```
 
 ```{r convention-find-condition-era-gap}
 convention_connection <- connect_duckdb(convention_work_db, read_only = TRUE)
-condition_era_gap <- dbGetQuery(
-  convention_connection,
-  get_issue_sql("convention_condition_era_completeness")
-)
+condition_era_gap <- dbGetQuery(convention_connection, convention_condition_diagnostic_sql)
 disconnect_duckdb(convention_connection)
 
 condition_era_gap
 ```
 
-## Stage 2 Fixes
+### Demonstration Remediation
+
+This fix step again uses a tutorial convenience helper. In practice, the more important lesson is how to interpret a threshold-based convention finding and trace it back to ETL or derivation behavior.
 
 ```{r convention-fix-issues}
 convention_connection <- connect_duckdb(convention_work_db, read_only = FALSE)
@@ -266,106 +522,198 @@ apply_convention_fixes(convention_connection, stage = "quarto-convention")
 disconnect_duckdb(convention_connection)
 ```
 
-## Stage 2 Rerun and Verification
+### Rerun and Verify
 
 ```{r convention-rerun-dqd}
-convention_after <- run_dqd(
-  db_path = convention_work_db,
-  cdm_source_name = "SyntheaTutorialConventionFixed",
-  check_severity = "convention",
-  output_json_path = convention_after_json,
-  verbose_mode = TRUE,
-  write_to_table = FALSE
+convention_after <- DataQualityDashboard::executeDqChecks(
+  connectionDetails = convention_connection_details,
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
+  cdmSourceName = "SyntheaTutorialConventionFixed",
+  numThreads = 1,
+  sqlOnly = FALSE,
+  outputFolder = results_dir,
+  outputFile = basename(convention_after_json),
+  verboseMode = TRUE,
+  writeToTable = FALSE,
+  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
+  checkSeverity = "convention",
+  cdmVersion = "5.4"
 )
 ```
 
 ```{r convention-verify}
-convention_after_targets <- filter_dqd_results(
-  convention_after,
-  check_names = c("measurePersonCompleteness", "measureConditionEraCompleteness")
-)
-
-convention_after_targets[
-  convention_after_targets$numViolatedRows > 0,
-  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+convention_after$CheckResults[
+  convention_after$CheckResults$checkName %in% c("measurePersonCompleteness", "measureConditionEraCompleteness") &
+    convention_after$CheckResults$numViolatedRows > 0,
+  c("checkName", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
 ]
 ```
 
-::: {.callout-note}
-Expected outcome: the procedure coverage gap and missing condition era gap should no longer appear after the convention rerun.
-:::
-
 ## Stage 3: Characterization Checks
 
-The characterization stage starts from the prepared snapshot where fatal and convention issues are already fixed.
+Characterization findings are often the most nuanced. They surface potentially implausible or unexpected patterns, but not every flagged row is necessarily wrong. These checks are meant to support investigation and context-setting, not automatic deletion or correction.
+
+For this tutorial, the two characterization targets are:
+
+- `withinVisitDates`
+- `plausibleStartBeforeEnd`
+
+```{r characterization-check-metadata}
+subset(
+  tutorial_checks,
+  severity == "characterization",
+  select = c(
+    "target_check",
+    "checkDescription",
+    "checkLevel",
+    "kahnCategory",
+    "kahnSubcategory",
+    "kahnContext",
+    "sqlFile"
+  )
+)
+```
 
 ```{r characterization-prepare-working-db}
 characterization_work_db <- file.path(quarto_work_dir, "characterization-working.duckdb")
 copy_database_file(snapshot_paths$after_convention, characterization_work_db, overwrite = TRUE)
-characterization_before_json <- file.path(repo_root, "dqd_output", "results", "quarto-characterization-before.json")
-characterization_after_json <- file.path(repo_root, "dqd_output", "results", "quarto-characterization-after.json")
+characterization_before_json <- file.path(results_dir, "quarto-characterization-before.json")
+characterization_after_json <- file.path(results_dir, "quarto-characterization-after.json")
+
+characterization_connection_details <- DatabaseConnector::createConnectionDetails(
+  dbms = "duckdb",
+  server = characterization_work_db
+)
 ```
 
+### Run DQD Directly
+
 ```{r characterization-run-dqd}
-characterization_before <- run_dqd(
-  db_path = characterization_work_db,
-  cdm_source_name = "SyntheaTutorialCharacterization",
-  check_severity = "characterization",
-  output_json_path = characterization_before_json,
-  verbose_mode = TRUE,
-  write_to_table = FALSE
+characterization_before <- DataQualityDashboard::executeDqChecks(
+  connectionDetails = characterization_connection_details,
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
+  cdmSourceName = "SyntheaTutorialCharacterization",
+  numThreads = 1,
+  sqlOnly = FALSE,
+  outputFolder = results_dir,
+  outputFile = basename(characterization_before_json),
+  verboseMode = TRUE,
+  writeToTable = FALSE,
+  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
+  checkSeverity = "characterization",
+  cdmVersion = "5.4"
 )
 ```
 
 ```{r characterization-inspect-results}
-characterization_targets <- filter_dqd_results(
-  characterization_before,
-  check_names = c("withinVisitDates", "plausibleStartBeforeEnd")
-)
-
-characterization_targets[
-  characterization_targets$numViolatedRows > 0,
-  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+characterization_targets <- characterization_before$CheckResults[
+  characterization_before$CheckResults$checkName %in% c("withinVisitDates", "plausibleStartBeforeEnd") &
+    characterization_before$CheckResults$numViolatedRows > 0,
+  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue", "sqlFile", "category", "subcategory", "context")
 ]
+
+characterization_targets
 ```
 
-## Stage 3 Investigation SQL
+### Characterization Check 1: Events Outside the Visit Window
 
-### Observations outside the visit window
+Events outside visit windows may signal date drift, visit assignment issues, or workflow timing mismatches. Some real systems legitimately record events slightly outside a visit boundary, so the right response is usually to investigate context before changing the data.
 
-```{r characterization-observation-sql, results='asis'}
-cat("```sql\n", get_issue_sql("characterization_observation_within_visit_dates"), "\n```", sep = "")
+Potential remediation paths include:
+
+- validate visit linkage logic
+- inspect timestamp precision, truncation, or timezone effects
+- review source workflow timing for when events are actually recorded
+- decide whether the date, visit link, or both need correction upstream
+
+The tutorial fix restores the original dates only to demonstrate the rerun cycle.
+
+```{r characterization-within-visit-metadata}
+subset(
+  tutorial_checks,
+  target_check == "withinVisitDates",
+  select = c("target_check", "checkDescription", "kahnCategory", "kahnSubcategory", "kahnContext", "sqlFile")
+)
+```
+
+```{r characterization-within-visit-template-path}
+characterization_visit_sql_file <- subset(
+  tutorial_checks,
+  target_check == "withinVisitDates"
+)$sqlFile[1]
+
+get_dqd_template_path(characterization_visit_sql_file)
+```
+
+```{r characterization-within-visit-template, results='asis'}
+show_template_for_check(characterization_visit_sql_file)
+```
+
+```{r characterization-within-visit-diagnostic-sql, results='asis'}
+characterization_visit_diagnostic_sql <- get_issue_sql("characterization_observation_within_visit_dates")
+show_sql_block(characterization_visit_diagnostic_sql)
 ```
 
 ```{r characterization-find-observation-dates}
 characterization_connection <- connect_duckdb(characterization_work_db, read_only = TRUE)
-observation_window_failures <- dbGetQuery(
-  characterization_connection,
-  get_issue_sql("characterization_observation_within_visit_dates")
-)
+observation_window_failures <- dbGetQuery(characterization_connection, characterization_visit_diagnostic_sql)
 disconnect_duckdb(characterization_connection)
 
 head(observation_window_failures, 20)
 ```
 
-### Drug exposures with end date before start date
+### Characterization Check 2: Start Date Before End Date
 
-```{r characterization-drug-sql, results='asis'}
-cat("```sql\n", get_issue_sql("characterization_drug_start_before_end"), "\n```", sep = "")
+Reversed start and end dates are suspicious because they often indicate transformation mistakes, parsing errors, or date derivation problems. But again, the remediation question is broader than “patch the row.” You usually want to understand whether the underlying issue came from the source, the ETL, or date normalization logic.
+
+Potential remediation paths include:
+
+- inspect source start/end fields
+- review transformations for truncation or date-order reversal
+- validate timezone or datetime-to-date conversion logic
+- rerun the ETL after the upstream logic is corrected
+
+The tutorial fix restores backed-up dates in the working copy so that the DQD rerun is easy to interpret.
+
+```{r characterization-start-end-metadata}
+subset(
+  tutorial_checks,
+  target_check == "plausibleStartBeforeEnd",
+  select = c("target_check", "checkDescription", "kahnCategory", "kahnSubcategory", "kahnContext", "sqlFile")
+)
+```
+
+```{r characterization-start-end-template-path}
+characterization_start_end_sql_file <- subset(
+  tutorial_checks,
+  target_check == "plausibleStartBeforeEnd"
+)$sqlFile[1]
+
+get_dqd_template_path(characterization_start_end_sql_file)
+```
+
+```{r characterization-start-end-template, results='asis'}
+show_template_for_check(characterization_start_end_sql_file)
+```
+
+```{r characterization-start-end-diagnostic-sql, results='asis'}
+characterization_start_end_diagnostic_sql <- get_issue_sql("characterization_drug_start_before_end")
+show_sql_block(characterization_start_end_diagnostic_sql)
 ```
 
 ```{r characterization-find-drug-dates}
 characterization_connection <- connect_duckdb(characterization_work_db, read_only = TRUE)
-drug_date_failures <- dbGetQuery(
-  characterization_connection,
-  get_issue_sql("characterization_drug_start_before_end")
-)
+drug_date_failures <- dbGetQuery(characterization_connection, characterization_start_end_diagnostic_sql)
 disconnect_duckdb(characterization_connection)
 
 drug_date_failures
 ```
 
-## Stage 3 Fixes
+### Demonstration Remediation
+
+This step uses a tutorial convenience helper. The actual lesson is that characterization findings often need interpretation and governance before correction.
 
 ```{r characterization-fix-issues}
 characterization_connection <- connect_duckdb(characterization_work_db, read_only = FALSE)
@@ -373,41 +721,43 @@ apply_characterization_fixes(characterization_connection, stage = "quarto-charac
 disconnect_duckdb(characterization_connection)
 ```
 
-## Stage 3 Rerun and Verification
+### Rerun and Verify
 
 ```{r characterization-rerun-dqd}
-characterization_after <- run_dqd(
-  db_path = characterization_work_db,
-  cdm_source_name = "SyntheaTutorialCharacterizationFixed",
-  check_severity = "characterization",
-  output_json_path = characterization_after_json,
-  verbose_mode = TRUE,
-  write_to_table = FALSE
+characterization_after <- DataQualityDashboard::executeDqChecks(
+  connectionDetails = characterization_connection_details,
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
+  cdmSourceName = "SyntheaTutorialCharacterizationFixed",
+  numThreads = 1,
+  sqlOnly = FALSE,
+  outputFolder = results_dir,
+  outputFile = basename(characterization_after_json),
+  verboseMode = TRUE,
+  writeToTable = FALSE,
+  checkLevels = c("TABLE", "FIELD", "CONCEPT"),
+  checkSeverity = "characterization",
+  cdmVersion = "5.4"
 )
 ```
 
 ```{r characterization-verify}
-characterization_after_targets <- filter_dqd_results(
-  characterization_after,
-  check_names = c("withinVisitDates", "plausibleStartBeforeEnd")
-)
-
-characterization_after_targets[
-  characterization_after_targets$numViolatedRows > 0,
-  c("checkName", "checkLevel", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
+characterization_after$CheckResults[
+  characterization_after$CheckResults$checkName %in% c("withinVisitDates", "plausibleStartBeforeEnd") &
+    characterization_after$CheckResults$numViolatedRows > 0,
+  c("checkName", "cdmTableName", "cdmFieldName", "numViolatedRows", "pctViolatedRows", "thresholdValue")
 ]
 ```
 
-::: {.callout-note}
-Expected outcome: the tutorial-specific characterization findings should disappear after the rerun.
-:::
-
 ## Wrap-up and Discussion
 
-This tutorial used prepared snapshots to keep the exercise deterministic while still letting you inspect the failing rows, apply live fixes, and verify the changes with DQD reruns.
+This tutorial used DQD directly, then unpacked how a failed check is described, where its SQL template lives in the package, and how to write a readable diagnostic query to investigate the affected rows.
 
-From here you can:
+The most important takeaways are:
 
-- compare the tutorial snapshots against the clean baseline
-- open the saved JSON outputs in the DQD dashboard
-- adapt the helper functions to create additional teaching scenarios
+- DQD findings are screening signals, not root-cause analyses
+- the Kahn framing helps you understand what kind of quality question is being raised
+- the same failed check can imply different remediation paths depending on source context and governance
+- a local SQL fix is useful in a tutorial, but real remediation often belongs in source systems, ETL logic, or controlled data refresh processes
+
+From here, you can compare the tutorial snapshots against the clean baseline, inspect the saved JSON results in the DQD dashboard, and adapt the same “finding -> metadata -> template -> diagnosis -> remediation options” workflow to other DQD checks.

@@ -43,6 +43,20 @@ ensure_parent_dir <- function(path) {
   ensure_dir(dirname(path))
 }
 
+resolve_repo_root <- function(start = getwd()) {
+  candidates <- unique(c(
+    normalizePath(start, winslash = "/", mustWork = FALSE),
+    normalizePath(file.path(start, ".."), winslash = "/", mustWork = FALSE)
+  ))
+
+  matches <- candidates[file.exists(file.path(candidates, "R", "dqd_helpers.R"))]
+  if (length(matches) == 0) {
+    stop("Could not locate the repository root from: ", start)
+  }
+
+  matches[[1]]
+}
+
 copy_database_file <- function(source, target, overwrite = TRUE) {
   if (!file.exists(source)) {
     stop("Source database does not exist: ", source)
