@@ -84,4 +84,6 @@ write_tutorial_log(
   title = "Single tutorial DuckDB with raw and CDM tutorial issues"
 )
 
+DBI::dbDisconnect(connection)
+
 cat("Wrote tutorial DuckDB to:", normalizePath(args$outputDbPath, winslash = "/", mustWork = TRUE), "\n")
