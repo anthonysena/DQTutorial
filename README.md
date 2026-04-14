@@ -1,25 +1,27 @@
 # DQ Tutorial for OHDSI
 
-This repository is a hands-on tutorial project for OHDSI users who want to learn how to use the DataQualityDashboard (DQD) against an OMOP CDM. It includes a clean synthetic Synthea OMOP CDM, scripts to generate intentionally broken tutorial snapshots, and a staged Quarto tutorial that walks through finding and fixing issues by DQD severity.
+This repository is a hands-on tutorial project for OHDSI users who want to learn how to use the DataQualityDashboard (DQD) against an OMOP CDM. The current workflow centers on a committed broken raw Synthea export and a single tutorial DuckDB that contains both the transformed OMOP CDM and the staged raw source tables.
 
 ## Repository Layout
 
-- [CreateCDM.R](C:/git/anthonysena/DQTutorial/CreateCDM.R): rebuilds the clean Synthea OMOP CDM from the CSV source in `data/syntheaCDM/`.
-- [InjectTutorialIssues.R](C:/git/anthonysena/DQTutorial/InjectTutorialIssues.R): copies the clean DuckDB and injects the six curated tutorial issues.
-- [PrepareTutorialSnapshots.R](C:/git/anthonysena/DQTutorial/PrepareTutorialSnapshots.R): creates the broken and stage-fixed tutorial DuckDB snapshots.
-- [RunDQD.R](C:/git/anthonysena/DQTutorial/RunDQD.R): executes DQD for a chosen DuckDB and severity set and writes deterministic JSON output.
+- [CreateCDM.R](C:/git/anthonysena/DQTutorial/CreateCDM.R): rebuilds the clean Synthea OMOP CDM from `data/syntheaCDM/`.
+- [PrepareRawIssueSet.R](C:/git/anthonysena/DQTutorial/PrepareRawIssueSet.R): recreates `data/syntheaRawWithDqIssues/` from `data/syntheaRaw/` with deterministic tutorial mutations.
+- [BuildTutorialCdmWithDq.R](C:/git/anthonysena/DQTutorial/BuildTutorialCdmWithDq.R): builds `data/syntheaCDMWithDq.duckdb` from `data/syntheaRawWithDqIssues/` and injects the non-raw tutorial issues.
+- [RunDQD.R](C:/git/anthonysena/DQTutorial/RunDQD.R): executes DQD for a chosen DuckDB and schema.
 - [LaunchDqdDashboards.R](C:/git/anthonysena/DQTutorial/LaunchDqdDashboards.R): opens one or more saved DQD JSON result files in the dashboard viewer.
 - [R/dqd_helpers.R](C:/git/anthonysena/DQTutorial/R/dqd_helpers.R): shared helper functions for argument parsing, DuckDB connections, and DQD execution.
-- [R/tutorial_sql_helpers.R](C:/git/anthonysena/DQTutorial/R/tutorial_sql_helpers.R): helper functions for injecting, diagnosing, and fixing the staged tutorial issues.
+- [R/tutorial_sql_helpers.R](C:/git/anthonysena/DQTutorial/R/tutorial_sql_helpers.R): helper functions for registering, diagnosing, and fixing the curated tutorial issues in the single tutorial DuckDB.
 - [tutorials/dqd-tutorial.qmd](C:/git/anthonysena/DQTutorial/tutorials/dqd-tutorial.qmd): the interactive Quarto tutorial.
-- `data/syntheaCDM/`: source CSV files used to build the clean OMOP CDM.
-- `dqd_output/`: output location for logs, DQD JSON files, and Quarto working files.
+- `data/syntheaRaw/`: clean raw Synthea CSV files.
+- `data/syntheaRawWithDqIssues/`: committed raw Synthea CSV files with tutorial data quality mutations.
+- `data/syntheaCDM.duckdb`: clean DuckDB artifact used as the historical “clean” baseline.
+- `data/syntheaCDMWithDq.duckdb`: the main tutorial DuckDB with both `cdm` and `synthea_native` schemas.
 
 ## Prerequisites
 
 - R with the project dependencies restored through `renv`
-- Quarto, if you want to render and run the tutorial document
-- Enough local disk space to create several DuckDB snapshots
+- Quarto, if you want to render the tutorial
+- Enough local disk space to create DuckDB artifacts
 
 ## Environment Setup
 
@@ -29,102 +31,87 @@ From the repository root:
 renv::restore()
 ```
 
-If you want to render the Quarto tutorial, confirm Quarto is installed:
+If you want to render the Quarto tutorial:
 
 ```powershell
 quarto check
 ```
 
-## Build the Clean Synthea CDM
+## Clean Baseline
 
-The clean baseline CDM is stored in:
-
-- `data/syntheaCDM.duckdb`
-
-To rebuild it from the Synthea CSV extracts:
-
-```powershell
-Rscript CreateCDM.R
-```
-
-This uses the CSV files in `data/syntheaCDM/`, normalizes date formats, and reloads the data into DuckDB.
-
-## Generate Tutorial CDM Snapshots
-
-The tutorial keeps the clean baseline immutable and creates prepared snapshots for each stage of the workshop.
-
-To build all snapshots:
-
-```powershell
-Rscript PrepareTutorialSnapshots.R
-```
-
-This produces:
+The clean ETL artifact remains:
 
 - `data/syntheaCDM.duckdb`
-- `data/syntheaCDM_tutorial_broken.duckdb`
-- `data/syntheaCDM_tutorial_after_fatal.duckdb`
-- `data/syntheaCDM_tutorial_after_convention.duckdb`
-- `data/syntheaCDM_tutorial_after_characterization.duckdb`
 
-The injected issue set is:
+The historical ETL entrypoint used to build the clean database is still:
 
-- `fatal`: duplicate `MEASUREMENT.MEASUREMENT_ID`
+```powershell
+Rscript etl/etl-synthea/run.R
+```
+
+That script is preserved as the clean-build artifact shown to students.
+
+## Regenerate the Broken Raw Input Set
+
+The committed tutorial raw inputs live under:
+
+- `data/syntheaRawWithDqIssues/`
+
+To recreate them from the clean raw Synthea export:
+
+```powershell
+Rscript PrepareRawIssueSet.R
+```
+
+This script copies `data/syntheaRaw/` and then applies deterministic tutorial mutations:
+
+- `observations.csv`: selected rows are changed to a clearly marked source code used to trace the tutorial `fkDomain` issue from raw staging rows back to the affected measurement visit
+- `medications.csv`: selected rows are marked for the tutorial `isStandardValidConcept` flow
+
+## Build the Tutorial DuckDB
+
+The main tutorial database is:
+
+- `data/syntheaCDMWithDq.duckdb`
+
+Build it with:
+
+```powershell
+Rscript BuildTutorialCdmWithDq.R
+```
+
+This database contains:
+
+- `cdm`: OMOP CDM tables evaluated by DQD
+- `synthea_native`: staged raw Synthea tables loaded by the ETL
+- `main`: tutorial metadata tables used to track curated issue lineage and local fixes
+
+The curated issue set is:
+
+- `fatal`: missing required `VISIT_OCCURRENCE.VISIT_END_DATE`
 - `fatal`: overlapping `OBSERVATION_PERIOD` rows for one person
-- `convention`: missing `PROCEDURE_OCCURRENCE` coverage for selected persons
-- `convention`: missing `CONDITION_ERA` rows for one person with condition history
+- `convention`: `fkDomain` on `MEASUREMENT.MEASUREMENT_CONCEPT_ID`, anchored to marked raw `observations.csv` rows and recorded in the lineage metadata
+- `convention`: `isStandardValidConcept` on `DRUG_EXPOSURE.DRUG_CONCEPT_ID`, tied to marked raw medication rows and guaranteed with a narrow post-ETL adjustment
 - `characterization`: `OBSERVATION.OBSERVATION_DATE` outside visit window
 - `characterization`: `DRUG_EXPOSURE_END_DATE` before `DRUG_EXPOSURE_START_DATE`
-
-The broken snapshot includes backup tables and registry tables used by the tutorial:
-
-- `main.tutorial_issue_registry`
-- `main.tutorial_fix_registry`
-
-If you only want the broken tutorial database:
-
-```powershell
-Rscript InjectTutorialIssues.R
-```
 
 ## Run DQD Outside Quarto
 
 `RunDQD.R` accepts named `key=value` arguments.
 
-### Clean CDM
+### Clean baseline
 
 ```powershell
-Rscript RunDQD.R dbPath=data/syntheaCDM.duckdb cdmSourceName=Synthea checkSeverity=fatal,convention,characterization outputJsonPath=dqd_output/results/synthea-clean-dqd.json
+Rscript RunDQD.R dbPath=data/syntheaCDM.duckdb cdmDatabaseSchema=cdm resultsDatabaseSchema=main cdmSourceName=Synthea checkSeverity=fatal,convention,characterization outputJsonPath=dqd_output/results/synthea-clean-dqd.json
 ```
 
-### Broken tutorial snapshot by stage
-
-Fatal:
+### Single tutorial DuckDB
 
 ```powershell
-Rscript RunDQD.R dbPath=data/syntheaCDM_tutorial_broken.duckdb cdmSourceName=SyntheaTutorial checkSeverity=fatal outputJsonPath=dqd_output/results/synthea-tutorial-fatal.json
+Rscript RunDQD.R dbPath=data/syntheaCDMWithDq.duckdb cdmDatabaseSchema=cdm resultsDatabaseSchema=main cdmSourceName=SyntheaTutorial checkSeverity=fatal,convention,characterization outputJsonPath=dqd_output/results/synthea-with-dq-dqd.json
 ```
 
-Convention:
-
-```powershell
-Rscript RunDQD.R dbPath=data/syntheaCDM_tutorial_after_fatal.duckdb cdmSourceName=SyntheaTutorial checkSeverity=convention outputJsonPath=dqd_output/results/synthea-tutorial-convention.json
-```
-
-Characterization:
-
-```powershell
-Rscript RunDQD.R dbPath=data/syntheaCDM_tutorial_after_convention.duckdb cdmSourceName=SyntheaTutorial checkSeverity=characterization outputJsonPath=dqd_output/results/synthea-tutorial-characterization.json
-```
-
-The intended stable JSON artifacts are:
-
-- `dqd_output/results/synthea-clean-dqd.json`
-- `dqd_output/results/synthea-tutorial-fatal.json`
-- `dqd_output/results/synthea-tutorial-convention.json`
-- `dqd_output/results/synthea-tutorial-characterization.json`
-
-To launch the dashboard viewer for these files:
+To launch the dashboard viewer for saved results:
 
 ```powershell
 Rscript LaunchDqdDashboards.R
@@ -132,50 +119,38 @@ Rscript LaunchDqdDashboards.R
 
 ## Interactive Tutorial in Quarto
 
-The staged hands-on tutorial lives in [tutorials/dqd-tutorial.qmd](C:/git/anthonysena/DQTutorial/tutorials/dqd-tutorial.qmd).
+The hands-on tutorial lives in [tutorials/dqd-tutorial.qmd](C:/git/anthonysena/DQTutorial/tutorials/dqd-tutorial.qmd).
 
-The tutorial flow is:
-
-1. Start from the prepared broken tutorial snapshot.
-2. Run DQD for `fatal`.
-3. Identify the failing rows with focused SQL.
-4. Apply the fatal fixes and rerun DQD.
-5. Reset to the prepared post-fatal snapshot.
-6. Run DQD for `convention`.
-7. Identify, fix, and rerun.
-8. Reset to the prepared post-convention snapshot.
-9. Run DQD for `characterization`.
-10. Identify, fix, and rerun.
-
-Render the tutorial with:
+Render it with:
 
 ```powershell
 quarto render tutorials/dqd-tutorial.qmd
 ```
 
-You can also open the `.qmd` file in an IDE and run the R chunks interactively.
+The tutorial now works from a temporary copy of `data/syntheaCDMWithDq.duckdb` instead of relying on committed stage snapshots. Students investigate issues by querying both `cdm` and `synthea_native` in the same database file.
 
 ## Expected Artifacts
 
-After a full workflow run, expect these core files:
+After the main workflow runs, expect these core files:
 
+- `data/syntheaRawWithDqIssues/`
 - `data/syntheaCDM.duckdb`
-- `data/syntheaCDM_tutorial_broken.duckdb`
-- `data/syntheaCDM_tutorial_after_fatal.duckdb`
-- `data/syntheaCDM_tutorial_after_convention.duckdb`
-- `data/syntheaCDM_tutorial_after_characterization.duckdb`
+- `data/syntheaCDMWithDq.duckdb`
 - `dqd_output/results/synthea-clean-dqd.json`
-- `dqd_output/results/synthea-tutorial-fatal.json`
-- `dqd_output/results/synthea-tutorial-convention.json`
-- `dqd_output/results/synthea-tutorial-characterization.json`
-- `dqd_output/tutorial_issue_log.txt`
-- `dqd_output/tutorial_after_fatal_log.txt`
-- `dqd_output/tutorial_after_convention_log.txt`
-- `dqd_output/tutorial_after_characterization_log.txt`
+- `dqd_output/results/synthea-with-dq-dqd.json`
+- `dqd_output/tutorial_cdm_with_dq_log.txt`
+
+## Legacy Scripts
+
+These scripts remain in the repo for reference, but they are no longer the primary student workflow:
+
+- [PrepareTutorialSnapshots.R](C:/git/anthonysena/DQTutorial/PrepareTutorialSnapshots.R)
+- [InjectTutorialIssues.R](C:/git/anthonysena/DQTutorial/InjectTutorialIssues.R)
+
+The tutorial no longer depends on `data/syntheaCDM_tutorial_*.duckdb`.
 
 ## Troubleshooting / Known Caveats
 
-- The previous version of the repo tried to export results from the DuckDB `dqddashboard_results` table. In this project, the direct JSON output from `executeDqChecks()` is the source of truth because the table-based export path was producing empty output.
-- The vocabulary tables in the current DuckDB are empty, so the curated tutorial issues intentionally avoid vocabulary-dependent failures.
-- The clean Synthea CDM may still have ambient DQD findings unrelated to the injected tutorial defects. The tutorial focuses on the staged injected deltas.
-- The Quarto tutorial works from prepared snapshots so each severity stage starts from a deterministic database state.
+- The `fkDomain` and `isStandardValidConcept` convention examples are both traceable from committed raw rows in `synthea_native`, but each uses a narrow post-ETL concept adjustment so the final failing CDM row is deterministic for the tutorial.
+- DQD should be run against the `cdm` schema, not `main`, for the single tutorial DuckDB.
+- The tutorial works best after regenerating `data/syntheaRawWithDqIssues/` and `data/syntheaCDMWithDq.duckdb` so the committed artifacts and local build outputs stay aligned.

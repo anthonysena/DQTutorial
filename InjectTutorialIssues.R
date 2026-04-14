@@ -1,6 +1,8 @@
 source("R/dqd_helpers.R")
 source("R/tutorial_sql_helpers.R")
 
+warning("InjectTutorialIssues.R is a legacy snapshot workflow and is no longer the primary tutorial path.")
+
 defaults <- list(
   sourceDbPath = "data/syntheaCDM.duckdb",
   targetDbPath = "data/syntheaCDM_tutorial_broken.duckdb",

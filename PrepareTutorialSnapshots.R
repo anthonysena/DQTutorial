@@ -1,6 +1,8 @@
 source("R/dqd_helpers.R")
 source("R/tutorial_sql_helpers.R")
 
+warning("PrepareTutorialSnapshots.R is a legacy snapshot workflow and is no longer the primary tutorial path.")
+
 defaults <- list(
   sourceDbPath = "data/syntheaCDM.duckdb",
   brokenDbPath = "data/syntheaCDM_tutorial_broken.duckdb",

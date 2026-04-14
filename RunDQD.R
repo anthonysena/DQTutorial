@@ -3,6 +3,8 @@ source("R/dqd_helpers.R")
 defaults <- list(
   dbPath = "data/syntheaCDM.duckdb",
   cdmSourceName = "Synthea",
+  cdmDatabaseSchema = "main",
+  resultsDatabaseSchema = "main",
   checkSeverity = "fatal,convention,characterization",
   outputJsonPath = "dqd_output/results/synthea-clean-dqd.json",
   outputFolder = "",
@@ -24,6 +26,8 @@ if (!nzchar(output_folder)) {
 results <- run_dqd(
   db_path = args$dbPath,
   cdm_source_name = args$cdmSourceName,
+  cdm_database_schema = args$cdmDatabaseSchema,
+  results_database_schema = args$resultsDatabaseSchema,
   check_severity = check_severity,
   output_json_path = args$outputJsonPath,
   output_folder = output_folder,

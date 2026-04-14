@@ -115,11 +115,41 @@ sql_literal <- function(value) {
   }
 }
 
+prepare_dqd_support_tables <- function(db_path,
+                                       cdm_database_schema = "main",
+                                       results_database_schema = "main") {
+  connection <- connect_duckdb(db_path, read_only = FALSE)
+  on.exit(disconnect_duckdb(connection), add = TRUE)
+
+  DBI::dbExecute(
+    connection,
+    sprintf("CREATE SCHEMA IF NOT EXISTS %s", results_database_schema)
+  )
+
+  for (table_name in c("cohort", "cohort_definition")) {
+    DBI::dbExecute(
+      connection,
+      sprintf(
+        paste(
+          "CREATE OR REPLACE VIEW %s.%s AS",
+          "SELECT * FROM %s.%s"
+        ),
+        results_database_schema,
+        table_name,
+        cdm_database_schema,
+        table_name
+      )
+    )
+  }
+}
+
 run_single_dqd <- function(db_path,
                            cdm_source_name,
                            check_severity,
                            output_json_path,
                            output_folder = NULL,
+                           cdm_database_schema = "main",
+                           results_database_schema = "main",
                            verbose_mode = TRUE,
                            write_to_table = FALSE) {
   if (is.null(output_folder) || !nzchar(output_folder)) {
@@ -128,6 +158,11 @@ run_single_dqd <- function(db_path,
 
   ensure_dir(output_folder)
   ensure_parent_dir(output_json_path)
+  prepare_dqd_support_tables(
+    db_path = db_path,
+    cdm_database_schema = cdm_database_schema,
+    results_database_schema = results_database_schema
+  )
 
   connection_details <- DatabaseConnector::createConnectionDetails(
     dbms = "duckdb",
@@ -136,8 +171,8 @@ run_single_dqd <- function(db_path,
 
   DataQualityDashboard::executeDqChecks(
     connectionDetails = connection_details,
-    cdmDatabaseSchema = "main",
-    resultsDatabaseSchema = "main",
+    cdmDatabaseSchema = cdm_database_schema,
+    resultsDatabaseSchema = results_database_schema,
     cdmSourceName = cdm_source_name,
     numThreads = 1,
     sqlOnly = FALSE,
@@ -187,6 +222,8 @@ run_dqd <- function(db_path,
                     check_severity,
                     output_json_path,
                     output_folder = NULL,
+                    cdm_database_schema = "main",
+                    results_database_schema = "main",
                     verbose_mode = TRUE,
                     write_to_table = FALSE) {
   if (length(check_severity) <= 1) {
@@ -196,6 +233,8 @@ run_dqd <- function(db_path,
       check_severity = check_severity,
       output_json_path = output_json_path,
       output_folder = output_folder,
+      cdm_database_schema = cdm_database_schema,
+      results_database_schema = results_database_schema,
       verbose_mode = verbose_mode,
       write_to_table = write_to_table
     ))
@@ -217,6 +256,8 @@ run_dqd <- function(db_path,
       check_severity = severity,
       output_json_path = file.path(tmp_dir, paste0(severity, ".json")),
       output_folder = tmp_dir,
+      cdm_database_schema = cdm_database_schema,
+      results_database_schema = results_database_schema,
       verbose_mode = verbose_mode,
       write_to_table = FALSE
     )
