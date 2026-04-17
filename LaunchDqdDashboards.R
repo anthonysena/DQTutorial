@@ -25,3 +25,8 @@ for (json_path in json_paths) {
     jsonPath = normalizePath(json_path, winslash = "/", mustWork = TRUE)
   )
 }
+
+json_path <- "dqd_output/results/synthea-tutorial-fatal.json"
+DataQualityDashboard::viewDqDashboard(
+  jsonPath = normalizePath(json_path, winslash = "/", mustWork = TRUE)
+)

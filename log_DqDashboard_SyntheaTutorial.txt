@@ -1,0 +1,12 @@
+2026-04-17 11:28:14	[Main thread]	INFO	readr	cli_block	 [36m──[39m [1mColumn specification[22m [36m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m cols(   checkLevel = [31mcol_character()[39m,   checkName = [31mcol_character()[39m,   checkDescription = [31mcol_character()[39m,   kahnContext = [31mcol_character()[39m,   kahnCategory = [31mcol_character()[39m,   kahnSubcategory = [31mcol_character()[39m,   sqlFile = [31mcol_character()[39m,   evaluationFilter = [31mcol_character()[39m,   severity = [31mcol_character()[39m ) 
+2026-04-17 11:28:26	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
+2026-04-17 11:28:26	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmTable
+2026-04-17 11:28:34	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureObservationPeriodOverlap
+2026-04-17 11:28:34	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmField
+2026-04-17 11:29:28	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isRequired
+2026-04-17 11:29:51	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: cdmDatatype
+2026-04-17 11:30:21	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isPrimaryKey
+2026-04-17 11:30:28	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isForeignKey
+2026-04-17 11:30:51	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureValueCompleteness
+2026-04-17 11:31:47	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: C:/git/anthonysena/DQTutorial/fatal.json
+2026-04-17 11:31:47	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete

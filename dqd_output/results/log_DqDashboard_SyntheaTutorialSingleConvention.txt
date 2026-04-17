@@ -1,11 +1,11 @@
-2026-04-14 16:31:36	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
-2026-04-14 16:31:36	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measurePersonCompleteness
-2026-04-14 16:31:36	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureConditionEraCompleteness
-2026-04-14 16:31:36	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: fkDomain
-2026-04-14 16:31:37	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: fkClass
-2026-04-14 16:31:37	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isStandardValidConcept
-2026-04-14 16:31:38	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: standardConceptRecordCompleteness
-2026-04-14 16:31:39	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: sourceConceptRecordCompleteness
-2026-04-14 16:31:39	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: sourceValueCompleteness
-2026-04-14 16:31:40	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: C:/git/anthonysena/DQTutorial/dqd_output/results/quarto-single-convention-before.json
-2026-04-14 16:31:40	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete
+2026-04-17 05:49:37	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	CDM Tables skipped: CONCEPT, VOCABULARY, CONCEPT_ANCESTOR, CONCEPT_RELATIONSHIP, CONCEPT_CLASS, CONCEPT_SYNONYM, RELATIONSHIP, DOMAIN
+2026-04-17 05:49:37	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measurePersonCompleteness
+2026-04-17 05:49:40	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: measureConditionEraCompleteness
+2026-04-17 05:49:40	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: fkDomain
+2026-04-17 05:49:47	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: fkClass
+2026-04-17 05:49:47	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: isStandardValidConcept
+2026-04-17 05:49:59	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: standardConceptRecordCompleteness
+2026-04-17 05:50:08	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: sourceConceptRecordCompleteness
+2026-04-17 05:50:10	[Main thread]	INFO	DataQualityDashboard	FUN	Processing check description: sourceValueCompleteness
+2026-04-17 05:50:16	[Main thread]	INFO	DataQualityDashboard	.writeResultsToJson	Writing results to file: C:/git/anthonysena/DQTutorial/dqd_output/results/quarto-single-convention-before.json
+2026-04-17 05:50:16	[Main thread]	INFO	DataQualityDashboard	executeDqChecks	Execution Complete
